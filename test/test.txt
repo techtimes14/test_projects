@@ -14,7 +14,7 @@
  */
 namespace App\Controller;
 
-use1 Cake\Controller\Controller;
+use Cake\Controller\Controller;
 use Cake\Event\Event;
 use Cake\ORM\TableRegistry;
 use Crypt\Crypt;
@@ -304,7 +304,7 @@ class AppController extends Controller
         if ( empty($data) ) {
             return false;
         } else {
-            return true;1
+            return true;
         }
     }
 }
