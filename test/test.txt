@@ -1,2 +1,310 @@
-this is a test 2
-1 dfgfgdf df dfg
+<?php
+/**
+ * CakePHP(tm) : Rapid Development Framework (http://cakephp.org)
+ * Copyright (c) Cake Software Foundation, Inc. (http://cakefoundation.org)
+ *
+ * Licensed under The MIT License
+ * For full copyright and license information, please see the LICENSE.txt
+ * Redistributions of files must retain the above copyright notice.
+ *
+ * @copyright Copyright (c) Cake Software Foundation, Inc. (http://cakefoundation.org)
+ * @link      http://cakephp.org CakePHP(tm) Project
+ * @since     0.2.9
+ * @license   http://www.opensource.org/licenses/mit-license.php MIT License
+ */
+namespace App\Controller;
+
+use Cake\Controller\Controller;
+use Cake\Event\Event;
+use Cake\ORM\TableRegistry;
+use Crypt\Crypt;
+
+/**
+ * Application Controller
+ *
+ * Add your application-wide methods in the class below, your controllers
+ * will inherit them.
+ *
+ * @link http://book.cakephp.org/3.0/en/controllers.html#the-app-controller
+ */
+class AppController extends Controller
+{
+
+    /**
+     * Initialization hook method.
+     *
+     * Use this method to add common initialization code like loading components.
+     *
+     * e.g. `$this->loadComponent('Security');`
+     *
+     * @return void
+     */
+    public function initialize()
+    {
+        parent::initialize();
+        $this->addCrpyt();
+        $this->loadComponent('RequestHandler');
+        $this->loadComponent('Flash');
+        $this->loadComponent('Auth', [
+            'loginAction' => [
+                'controller' => 'users',
+                'action' => 'login'
+            ],
+            'loginRedirect' => [
+                'controller' => '/',
+                'action' => ''
+            ],
+            'logoutRedirect' => [
+                'controller' => 'users',
+                'action' => 'login'
+            ],
+            'authError' => 'Invalid Credentials.',
+            'authenticate' => [
+                'Form' => [
+                    'userModel' => 'users',
+                    'fields' => ['username' => 'email', 'password' => 'password'],
+                    'scope' => ['users.status' => 'A']
+                ]
+            ],
+            'storage' => [
+                            'className' => 'Session',
+                            'key' => 'Auth.Users'
+                        ],
+            'authorize' => 'Controller'
+        ]);
+
+        // access auth data as $Auth in view page
+        $this->set('Auth',$this->Auth->user());
+    }
+
+    /**
+     * Before render callback.
+     *
+     * @param \Cake\Event\Event $event The beforeRender event.
+     * @return void
+     */
+    public function beforeRender(Event $event)
+    {
+        if (!array_key_exists('_serialize', $this->viewVars) &&
+            in_array($this->response->type(), ['application/json', 'application/xml'])
+        ) {
+            $this->set('_serialize', true);
+        }
+        
+        $cms = TableRegistry::get('Cms');
+        $ten_Reasons = $cms->find('all', ['conditions'=>['slug'=>'10-Reasons-to-Choose-us']])->first();
+
+        $site_settings = $this->getSiteSettings();
+
+        if(!empty($this->Auth->user())){
+            $auth_user_data = $this->getAuthData();
+        }else{
+            $auth_user_data = array();
+        }
+        $all_testimonials = $this->getTestimonials();
+        $footer_pages = $this->getFooterPages();
+        $services_pages = $this->getServices();
+        $terms_of_use = $cms->get(29);
+        $privacy_policy = $cms->get(30);
+        $money_back_guarantee = $cms->get(31);
+        $revision_policy = $cms->get(32);
+        $guarantee = $cms->get(33);
+        //pr($services_pages); die;
+        $this->set(compact('services_pages','site_settings', 'auth_user_data','ten_Reasons', 'all_testimonials', 'footer_pages','guarantee','revision_policy','money_back_guarantee','privacy_policy','terms_of_use'));
+    }
+    public function getServices()
+    {
+        $this->loadModel('ServiceCategories');
+        $services_page = $this->ServiceCategories->find('all', ['conditions'=>['ServiceCategories.status'=>'A'], 'contain'=>['Page'=>['conditions'=>['Page.status'=>'A'],'joinType'=>'INNER']]])->toArray();
+        return $services_page;
+
+    }
+    public function getFooterPages()
+    {
+        $footer_pages = TableRegistry::get('Cms');
+        $all_pages = $footer_pages->find('all', ['conditions'=>['Cms.status'=>'A', 'Cms.id >'=>13]])->toArray();
+        return $all_pages;
+    }
+    public function getTestimonials()
+    {
+        $testimonials = TableRegistry::get('Testimonals');
+        $all_testimonials = $testimonials->find('all', ['conditions'=>['Testimonals.status'=>'A']])->toArray();
+        return $all_testimonials;
+    }
+    public function getAuthData()
+    {
+       $users = TableRegistry::get('Users');
+        $logged_in_user = $this->Auth->user()['id'];
+        return $users->get($logged_in_user, ['contain'=>[]]);
+    }
+    public function getContentCategory()
+    {
+        $content_types = TableRegistry::get('Admin.ContentCategories');
+        $actives_content_types = $content_types->find('all', ['conditions'=>['ContentCategories.status'=>'A']])->toArray();
+        if(!empty($actives_content_types)){
+            foreach ($actives_content_types as  $value) {
+                $data[$value['id']] = $value['category_name'];
+            }
+        }else{
+            $data = array();
+        }
+        return $data;
+
+    }
+    /**
+     * [addCrpyt for password hassing]
+     */
+    function addCrpyt()
+    {
+        require_once(ROOT . '/vendor' . DS  . 'Crypt' . DS . 'Crypt.php');
+       /*
+        * usage to hash $this->Crypt->hash(stringToHash)
+        * usage to unhash $this->Crypt->unhash(hashedString)
+        */
+        $this->Crypt = new Crypt();
+    }
+    /**
+     * [smartDelete for deleting files or directory with files]
+     * @param  [string] $directory [directory path or file name with puth]
+     * @return [Null]            
+     */
+    public function smartDelete($directory)
+    {   
+        foreach(glob("{$directory}/*") as $file)
+        {
+            if(is_dir($file)) { 
+                $this->smartDelete($file);
+            } else {
+                unlink($file);
+            }
+        }
+        
+        rmdir($directory);
+    }
+    /**
+     * [smartCopy for copy all files or directry]
+     * @param  [String] $src [source path]
+     * @param  [String] $dst [destination path]
+     * @return [NULL]
+     */
+    public function smartCopy($src, $dst) {
+       $mode = 0777;
+       $this->rmkdir($dst, $mode);
+        if (is_dir ( $src )) {
+            $files = scandir ( $src );
+            //pr($files); die;
+            foreach ( $files as $file ){
+                if ($file != "." && $file != ".."){
+                    if ( is_dir($src . '/' . $file) ) { 
+                       $this->smartCopy($src . '/' . $file, $dst . '/' . $file); 
+                    }else{
+                        copy ( $src.'/'.$file, $dst.'/'.$file );
+                    }
+                }
+            }
+        } else if (file_exists ( $src ))
+            $folder_arr = explode('/', $src);
+            $file_name = end($folder_arr);
+            copy ( $src, $dst.$file_name );
+    }
+    
+    function rmkdir($path, $mode = 0777) {
+        return is_dir($path) || ( $this->rmkdir(dirname($path), $mode) && $this->_mkdir($path, $mode) );
+    }
+
+    function _mkdir($path, $mode = 0777) {
+        $old = umask(0);
+        $res = @mkdir($path, $mode);
+        umask($old);
+        return $res;
+    }
+
+    /**
+     * [getBoardBasis for get all active board basis]
+     * @return [Array] [it will return a array (code name) in the (key) and (value) is (board name)]
+     */
+    public function getBoardBasis(){
+        $board_basis = TableRegistry::get('Admin.BoardBasis');
+        $board_basis_data = $board_basis->find('all', array('conditions'=>['BoardBasis.status'=>'A']));
+        foreach($board_basis_data as $val){
+            $data[$val['code_name']] = $val['board_name'];
+        }
+        return $data;
+    }
+    /**
+     * [getSiteSettings for getting website settings.]
+     * @return [Array Object] [all website settings data from the database]
+     */
+    public function getSiteSettings(){
+        $settings = TableRegistry::get('Admin.CommonSetting');
+        $site_settings = $settings->find('all')->first();
+        //pr($site_settings); die;
+        return $site_settings;
+    }
+    /**
+     * [getSecurityQuestions for fetch all security question from the database ]
+     * @return [Array] [its return an array of all the question.]
+     */
+    public function getSecurityQuestions(){
+        $security_questions = TableRegistry::get('Admin.SecurityQuestions');
+        $security_questions_data = $security_questions->find('all', array('conditions'=>['SecurityQuestions.status'=>'A']));
+        $qt_arr = $security_questions_data->toArray();
+        if(!empty($qt_arr)){
+            foreach ($qt_arr as $val){
+                $data[$val['id']] = $val['question'];
+            }
+        }else{
+            $data = array();
+        }
+        return $data;
+    }
+    /**
+     * [getCountries to get all active country]
+     * @return [array] [array with id and country name]
+     */
+    public function getCountries(){
+        $countries = TableRegistry::get('Admin.Country');
+        $countries_data = $countries->find('all', array('conditions'=>['Country.status'=>'A']))->toArray();
+        if(!empty($countries_data)){
+            foreach ($countries_data as $val){
+                $data[$val['id']] = $val['country_name'];
+            }
+        }else{
+            $data = array();
+        }
+        return $data;
+    }
+    /**
+     * [getCitiesByCountryId get cities for a particular country]
+     * @param  [int] $country_id [country id]
+     * @return [array]             [city id and name as array]
+     */
+    public function getCitiesByCountryId($country_id = null){
+        $cities = TableRegistry::get('Admin.Province');
+        $cities_data = $cities->find('all', array('conditions'=>['Province.status'=>'A','Province.country_id'=>$country_id]))->toArray();
+        if(!empty($cities_data)){
+            foreach ($cities_data as $val){
+                $data[$val['id']] = $val['province_name'];
+            }
+        }else{
+            $data = array();
+        }
+        return $data;
+    }
+    /**
+     * [isDataExist for check if any data exist in the database or not]
+     * @param  [string]  $modelName     [model name]
+     * @param  [string]  $fieldName [field name which need to check]
+     * @param  [stsing]  $data      [data to check]
+     * @return boolean            [will return true if email exist]
+     */
+    public function isDataExist($modelName=null, $fieldName=null, $data=null){
+        $tbl_reg = TableRegistry::get($modelName);
+        $data = $tbl_reg->find('all', array('conditions'=>array($modelName.'.'.$fieldName => $data)))->first();
+        if ( empty($data) ) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+}
